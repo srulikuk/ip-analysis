@@ -1,29 +1,45 @@
 import os
-import re
 import ipaddress
 import time
 import datetime
 import operator
 import urllib.request
+from zipfile import ZipFile
 import json
+import ipsetpy
+import _config
+
+ip_source = (_config.ip_source)
+range_source_url = (_config.range_source_url)
+range_source_token = (_config.range_source_token)
+range_source_file = (_config.range_source_file)
+csv_file = (_config.csv_file)
+report_path = (_config.report_path)
+delete_download = (_config.delete_download)
+
 
 now = datetime.datetime.now()
 start_time = (now.strftime("%Y-%m-%d %H:%M:%S"))
-
-print("start " + start_time) # testing
-
-#ip_source="/tmp/ip_test"
-#ip_ranges="/tmp/1.2"
-ip_source="sample_ip_list"
-ip_ranges="sample_range_list_sorted"
-report_file="/data/reports/ip_report_" # suffix is added from time
 
 def ip_reduce(l, m):
     for i in range(0, len(l), m):
         yield l[i : i + m]
 
-def main():
 
+def main():
+    # Download ip ranges file
+    now = datetime.datetime.now()
+    download_dir = ("/tmp/ip2l_" + now.strftime("%Y-%m-%d_%H.%M.%S") + "/")
+    download_file_name = "download.zip"
+    download_zip = (download_dir + download_file_name)
+    download_url = (range_source_url + "?token=" + range_source_token + "&file=" + range_source_file)
+
+    os.mkdir(download_dir)
+    urllib.request.urlretrieve(download_url, download_zip)
+    with ZipFile(download_zip, 'r') as zip:
+        zip.extract(csv_file, download_dir)
+
+    range_source = (download_dir + csv_file)
 
     names = dict()
     counts = dict()
@@ -55,26 +71,26 @@ def main():
                     ip_skip_invalid += 1
                     continue
 
-    now = datetime.datetime.now() #testing
-    print("end convert ip list " + now.strftime("%H:%M:%S")) # testing
-
     ip = sorted(ip)
     total_ip = len(ip)
 
     for ip_part in ip_reduce(ip, max):
-        with open(ip_ranges, "r") as ranges:
+        with open(range_source, "r") as ranges:
 #            range = ranges.readlines()
             range = ranges.read().split('\n')
             for r in range:
                 if ip_part:
                     if r:
-                    #     s = r.split(',')[0] # Range start
-                    #     e = r.split(',')[1] # Range end
+                        r = r.replace('"', '')
                         try:
-                            s = r.split(',')[0] # Range start
-                            e = r.split(',')[1] # Range end
-                            c = r.split(',')[2] # iso code
-                            n = r.split(',')[3].strip() # full name
+                            if '-' in r.split(',')[2]: # range is in list without country code/name
+                                line_skip += 1
+                                continue
+                            else:
+                                s = r.split(',')[0] # Range start
+                                e = r.split(',')[1] # Range end
+                                c = r.split(',')[2] # iso code
+                                n = r.split(',')[3].strip() # full name
                         except:
                             line_skip += 1
                             continue
@@ -116,15 +132,13 @@ def main():
                                 counts[c] = int(0)
                             counts[c] += int(b)
 
-    now = datetime.datetime.now() # testing
-    print("going to failed " + now.strftime("%H:%M:%S")) # testing
 
     # sort the failed list
     failed = []
+    req = 0 # whoisip requests count
+    suc = 0 # whoisip success count
     if ip_fail:
         # Count the number of each failed ip
-        req = 0 # whoisip requests count
-        suc = 0 # whoisip success count
         ignore = []
         for x in ip_fail:
             if not x in ignore: # only process each unique ip once
@@ -162,10 +176,8 @@ def main():
     now = datetime.datetime.now()
     end_time = (now.strftime("%Y-%m-%d %H:%M:%S"))
 
-    log_error = 0
-
     # Write log file
-    with open(report_file + end_time.replace(' ', '_').replace(':', '.') + '.log', "w") as log:
+    with open(report_path + end_time.replace(' ', '_').replace(':', '.') + '.log', "w") as log:
         log.write('------ IP GEO REPORT ------\n')
         log.write('Start time {}\nFinished at {}\n====\n\n'.format(start_time, end_time))
         log.write('Processed {} IP\'s\n'.format(total_ip))
@@ -177,7 +189,7 @@ def main():
         if ip_skip_private > 0:
             log.write('{} lines were skipped from ip list as they seem to be reserved (private) IP\'s\n'.format(str(ip_skip_private)))
         if line_skip > 0:
-            log.write('{} lines were skipped from the range list as invalid\n'.format(str(ip_skip_invalid)))
+            log.write('{} lines were skipped from the range list as invalid\n'.format(str(line_skip)))
         if failed:
             log.write('(Failed to match {} IP\'s (listed at the end)\n'.format(len(failed)))
         log.write('\n\nCOUNTRY NAME, TOTAL COUNT\n====\n')
@@ -193,8 +205,11 @@ def main():
         else:
             log.write('\n====\nNo errors to report\n====\n')
 
-    now = datetime.datetime.now() #testing
-    print("all done " + now.strftime("%H:%M:%S")) # testing
+    if delete_download:
+        os.remove(range_source)
+        os.remove(download_zip)
+        os.rmdir(download_dir)
+
 
 if __name__ == '__main__':
     main()
