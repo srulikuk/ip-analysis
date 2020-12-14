@@ -156,7 +156,7 @@ def proccess_failed(i):
                 suc += 1
                 add_to_dict(code, name, c)
             except:
-            failed.append(str(conv_ip) + "," + str(c))
+                failed.append(str(conv_ip) + "," + str(c))
 
     return failed, req, suc
 
