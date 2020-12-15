@@ -7,11 +7,17 @@ import operator
 import urllib.request
 from zipfile import ZipFile
 import json
-import ipsetpy
 import _config
 
+# Global dicts
+NAMES = dict()
+COUNTS = dict()
 
 def get_time(t = " ", t2 = ":"):
+    """
+    get current time at different
+    points and in different formats.
+    """
     d_format = ("%Y-%m-%d" + t)
     t_format = "%H" + t2 + "%M" + t2 + "%S"
     time_n = datetime.datetime.now()
@@ -20,7 +26,15 @@ def get_time(t = " ", t2 = ":"):
 
 # Get IP ranges
 def get_ranges():
-    n = 0
+    """
+    Get the range file, either by downloading
+    it or from a static location specified in
+    the _config file, download_range must  be
+    set to True in the _config file.
+    The range is then processed, added to list.
+    Called by main function.
+    """
+    n = 0 # var to check if download was successfull
     if (_config.download_range):
         csv_file = (_config.csv_file)
         download_dir = ("/tmp/ip2l_" + get_time("_", ".") + "/")
@@ -59,6 +73,10 @@ def get_ranges():
 
 # Get the range file into list
 def range_list(rs):
+    """
+    Proccess the range and put into list.
+    Called by get_ranges function.
+    """
     cidr_range = []
     with open(rs, "r") as range_file:
         lines = range_file.readlines()
@@ -75,6 +93,12 @@ def range_list(rs):
 
 # Delete download files
 def del_zip(r, z, d):
+    """
+    Delete downloaded zip file and dir,
+    only executes if download failed or if
+    delete_download = True in _config file.
+    Called by get_ranges function.
+    """
     if r != 0:
         os.remove(r)
     os.remove(z)
@@ -83,6 +107,11 @@ def del_zip(r, z, d):
 
 # process ip list
 def get_ip():
+    """
+    Proccess the IP list, convert to
+    number and add to list.
+    Called by the main function.
+    """
     ip_source = (_config.ip_source)
     ip = []
     ip_uniq = 0
@@ -106,12 +135,25 @@ def get_ip():
 
 # split the ip list into smaller chunks
 def ip_split(l):
+    """
+    Split the ip list into chunks (size
+    set in  _config file),  this is for
+    performance (more in _config file).
+    Called by main function on loop.
+    """
     m = (_config.max_arr)
     for i in range(0, len(l), m):
         yield l[i : i + m]
 
 # Count matching ip's
 def count_matches(i, s, e, c, n): # iplist, ip_fail list, start, end, code, name
+    """
+    Count the number of matching IP's for each
+    range, this is achieved by moving the smaller
+    IP's to 1 list, the bigger ones to a different
+    list and counting the difference.
+    Called by main function.
+    """
     # Get the number of ip's matching the range by (by count of non matching)
     count_now = len(i)
     tmp_ip = []
@@ -132,6 +174,10 @@ def count_matches(i, s, e, c, n): # iplist, ip_fail list, start, end, code, name
 
 # Add count to dict
 def add_to_dict(c, n, b): # code, name, count
+    """
+    Add the count for each country to dict.
+    Called by count_matches function.
+    """
     if not c in NAMES:
         NAMES[c] = n
         COUNTS[c] = int(0)
@@ -139,6 +185,13 @@ def add_to_dict(c, n, b): # code, name, count
 
 # proccess the fail_ip list
 def proccess_failed(i):
+    """
+    For the IP's that  were not  matched,
+    convert back from number to IP format
+    then try finding a match using an api,
+    if no match add to final failed list.
+    Called by main function.
+    """
     failed = []
     req = 0 # whoisip requests count
     suc = 0 # whoisip success count
@@ -162,11 +215,17 @@ def proccess_failed(i):
 
 # Try to retrieve data for the failed ip's from api
 def ip_api_check(i):
+    """
+    API to check IP's that no match
+    were found in main range list.
+    Called by proccess_failed function.
+    """
     # see if we can get a result from whoisip
     time.sleep(0.5) # keep the api requests slow in a free account
     response = urllib.request.urlopen(_config.ip_api_url + i + _config.ip_api_request)
     data = json.load(response)
 
+    # Check if there is a valid response.
     try:
         code = data["country_code"]
         name = data["country"]
@@ -176,6 +235,10 @@ def ip_api_check(i):
 
 # Write log file
 def write_log(s, p, i, t, iu, tf, f, q, u, l, m): # Start time, Private ip count, Invalid ip count, Total_ip's, Ip_Uniq, Total ip_Fail, Failed., api reQuests, api sUccess, Line skips (range), Matched list
+    """
+    Write the report to log file.
+    Called by main function.
+    """
     report_path = (_config.report_path)
     file_time = get_time("_", ".")
     with open(report_path + file_time + '.log', "w") as log:
@@ -207,10 +270,6 @@ def write_log(s, p, i, t, iu, tf, f, q, u, l, m): # Start time, Private ip count
         else:
             log.write('\n====\nNo errors to report\n====\n')
 
-
-# Global dicts
-NAMES = dict()
-COUNTS = dict()
 
 def main():
     start_time = get_time()
